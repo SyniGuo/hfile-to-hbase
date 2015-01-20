@@ -21,7 +21,7 @@ public class WordCountReducerHbase extends TableReducer<Text, IntWritable, Immut
         }
         result.set(sum);
         Put put = new Put(key.getBytes());
-        put.add(Bytes.toBytes("content"), Bytes.toBytes("count"), Bytes.toBytes(String.valueOf(sum)));
+        put.add(Bytes.toBytes("default"), Bytes.toBytes("count"), Bytes.toBytes(String.valueOf(sum)));
         context.write(new ImmutableBytesWritable(key.getBytes()), put);
     }
 }

@@ -10,6 +10,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil;
 import org.apache.hadoop.io.IntWritable;
@@ -90,7 +91,7 @@ public class MapReduceHbaseDriver extends Configured implements Tool{
                     if (fileSeg.length >= 6) {
                         String topic = fileSeg[0];
                         String fileTs = fileSeg[1];
-                        String mapOrReduce = fileSeg[5];
+                        String mapOrReduce = fileSeg[4];
                         if ("r" == mapOrReduce) {
                             LOG.info("THIS IS REDUCE RESULT: {}", mapOrReduce);
                         } else {
@@ -101,19 +102,19 @@ System.out.println("============= " + topic + " ----------- " + fileTs + " +++++
                         Map<String, Long> tsMap = getZkTsInfo(conf, topic);
                         //Long curReadHfileTs = tsMap.get("curReadHfileTs");
                         Long lastReadHfileTs = tsMap.get("lastReadHfileTs");
-System.out.println("------------- " + lastReadHfileTs);
+System.out.println("-------LAST READ HFILE TS: " + lastReadHfileTs + "-------");
                         Long fileTsLong = Long.parseLong(fileTs);
-System.out.println("------------- " + fileTsLong);
+System.out.println("-------THIS FILE TS: " + fileTsLong + "-------");
                         if ((fileTsLong > lastReadHfileTs) || !specday.isEmpty()) {
                             String tablename = topic;
 
                             HBaseAdmin admin = new HBaseAdmin(conf);
                             if (admin.tableExists(tablename)) {
                                 LOG.info("table exists! IGNORING ...");
-                                //                            admin.disableTable(tablename);
-                                //                            admin.deleteTable(tablename);
+//                              admin.disableTable(tablename);
+//                              admin.deleteTable(tablename);
                             } else {
-                                HTableDescriptor htd = new HTableDescriptor(tablename);
+                                HTableDescriptor htd = new HTableDescriptor(TableName.valueOf(tablename));
                                 HColumnDescriptor hcd = new HColumnDescriptor("default");
                                 htd.addFamily(hcd);
                                 admin.createTable(htd);
@@ -139,6 +140,7 @@ System.out.println("------------- " + fileTsLong);
 
         // Iterate topicFileAsso to execute importing process (from hdfs to hbase)
         for (String topic: topicFileAsso.keySet()) {
+            conf.set("hfile.topic", topic);
             Long lasthfileTs = 0L;
             Map<Long, String> topicFileList = topicFileAsso.get(topic);
 

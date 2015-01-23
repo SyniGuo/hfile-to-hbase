@@ -14,6 +14,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil;
 import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.MapWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
@@ -75,7 +76,7 @@ public class MapReduceHbaseDriver extends Configured implements Tool{
         }
 
         // iterate the day list to get the associative topic file list
-        Map<String, Map<Long, String>> topicFileAsso = new HashMap<String, Map<Long, String>>();
+        Map<String, Map<String, String>> topicFileAsso = new HashMap<String, Map<String, String>>();
 
         for (String thisday : dayList) {
             // To get the file list from the hdfs_directory
@@ -92,20 +93,18 @@ public class MapReduceHbaseDriver extends Configured implements Tool{
                         String topic = fileSeg[0];
                         String fileTs = fileSeg[1];
                         String mapOrReduce = fileSeg[4];
+                        String reduceNo = fileSeg[5];
                         if ("r" == mapOrReduce) {
                             LOG.info("THIS IS REDUCE RESULT: {}", mapOrReduce);
                         } else {
                             LOG.info("THIS IS DIRECTLY MAP RESULT: {}", mapOrReduce);
                         }
-System.out.println("============= " + topic + " ----------- " + fileTs + " +++++++++++ " + mapOrReduce);
 
                         Map<String, Long> tsMap = getZkTsInfo(conf, topic);
                         //Long curReadHfileTs = tsMap.get("curReadHfileTs");
                         Long lastReadHfileTs = tsMap.get("lastReadHfileTs");
-System.out.println("-------LAST READ HFILE TS: " + lastReadHfileTs + "-------");
                         Long fileTsLong = Long.parseLong(fileTs);
-System.out.println("-------THIS FILE TS: " + fileTsLong + "-------");
-                        if ((fileTsLong > lastReadHfileTs) || !specday.isEmpty()) {
+//                        if ((fileTsLong > lastReadHfileTs) || !specday.isEmpty()) {
                             String tablename = topic;
 
                             HBaseAdmin admin = new HBaseAdmin(conf);
@@ -121,13 +120,15 @@ System.out.println("-------THIS FILE TS: " + fileTsLong + "-------");
                             }
 
                             String curHDFSFile = hfilePath + '/' + pathFile;
-                            Map<Long, String> topicFileList = new HashMap<Long, String>();
+System.out.println("++++++++++++++++ " + curHDFSFile + " +++++++++++++++++++ topic: " + topic);
+                            Map<String, String> topicFileList = new HashMap<String, String>();
                             if (topicFileAsso.containsKey(topic)) {
+System.out.println("---------------- there is key in topic FileAsso topic: " + topic);
                                 topicFileList = topicFileAsso.get(topic);
                             }
-                            topicFileList.put(fileTsLong, curHDFSFile);
+                            topicFileList.put(fileTsLong.toString() + '-' + reduceNo, curHDFSFile);
                             topicFileAsso.put(topic, topicFileList);
-                        }
+//                        }
                     }
                 }
             } else {
@@ -142,18 +143,20 @@ System.out.println("-------THIS FILE TS: " + fileTsLong + "-------");
         for (String topic: topicFileAsso.keySet()) {
             conf.set("hfile.topic", topic);
             Long lasthfileTs = 0L;
-            Map<Long, String> topicFileList = topicFileAsso.get(topic);
+            Map<String, String> topicFileList = topicFileAsso.get(topic);
 
             Job job = Job.getInstance(conf, "hfile2hbase_" + topic);
             job.setJarByClass(MapReduceHbaseDriver.class);
             job.setMapperClass(WordCountMapperHbase.class);
-            for (Long fileTsLong: topicFileList.keySet()) {
-                FileInputFormat.addInputPath(job, new Path(topicFileList.get(fileTsLong)));
+            for (String fileTsLongNo: topicFileList.keySet()) {
+                String[] fileTsLongNoSeg = fileTsLongNo.split("-");
+                Long fileTsLong = Long.parseLong(fileTsLongNoSeg[0]);
+                FileInputFormat.addInputPath(job, new Path(topicFileList.get(fileTsLongNo)));
                 lasthfileTs = fileTsLong > lasthfileTs ? fileTsLong : lasthfileTs;
             }
             TableMapReduceUtil.initTableReducerJob(topic, WordCountReducerHbase.class, job);
             job.setOutputKeyClass(Text.class);
-            job.setOutputValueClass(IntWritable.class);
+            job.setOutputValueClass(MapWritable.class);
             boolean success = job.waitForCompletion(true);
             if (success) {
                 commitZkTsInfo(conf, topic, lasthfileTs);
